@@ -1,0 +1,16 @@
+includes:
+    - vendor/cambis/silverstan/extension.neon
+
+parameters:
+    level: 5
+    paths:
+        - src
+    treatPhpDocTypesAsCertain: false
+    silverstan:
+        includeTestOnly: true
+    ignoreErrors:
+        # The SDK's setPdfOfLabels($positions) is documented int but accepts null as the "no A4 layout" sentinel
+        # (setLabelFormat(null)); the released v1 label flow relies on it.
+        -
+            message: '#expects int, null given\.#'
+            path: src/MyParcelProvider.php

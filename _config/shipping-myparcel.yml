@@ -7,3 +7,31 @@ Name: shipping-myparcel
 SilverShop\ShippingLabels\Provider\ProviderRegistry:
   providers:
     myparcel: 'SilverShop\ShippingMyParcel\MyParcelProvider'
+
+# v2: checkout delivery-options + pickup-point selection.
+# Carrier-neutral delivery-options storage on the Order (raw widget payload + extracted columns + pickup Address).
+SilverShop\Model\Order:
+  extensions:
+    - SilverShop\ShippingMyParcel\Extension\MyParcelOrderExtension
+
+# Inject the delivery-options widget into the single-page checkout (Requirements + glue, no theme edits).
+SilverShop\Page\CheckoutPageController:
+  extensions:
+    - SilverShop\ShippingMyParcel\Extension\MyParcelCheckoutExtension
+
+---
+Name: shipping-myparcel-checkout
+After:
+  - '#shopcheckout'
+---
+# Core's SinglePageCheckoutComponentConfig hard-codes its component list with no add-component hook. Rather than swap the
+# class (an Injector `class:` override doesn't compose — only one module can win, e.g. vat-compliance also overrides it),
+# append our component with an Injector `calls:` entry. Injector merges the service definition across config, so this
+# coexists with another module's `class:` override or `calls:` — the config is created, then addComponent() runs on it.
+# CheckoutComponentConfig::create() resolves through the Injector, so no silvershop/core edit is needed. The component
+# renders nothing unless MyParcel is configured, so this is a safe no-op otherwise.
+# (Recommended future upstream PR: an `updateComponents` extend hook in the core config would be cleaner still.)
+SilverStripe\Core\Injector\Injector:
+  SilverShop\Checkout\SinglePageCheckoutComponentConfig:
+    calls:
+      - [ addComponent, [ '%$SilverShop\ShippingMyParcel\Checkout\MyParcelDeliveryOptions', 'SilverShop\Checkout\Component\Notes' ] ]

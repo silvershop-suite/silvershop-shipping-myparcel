@@ -1,3 +1,8 @@
 nl:
   SilverShop\ShippingMyParcel\MyParcelProvider:
     Title: 'MyParcel (PostNL)'
+  SilverShop\ShippingMyParcel\Extension\MyParcelOrderExtension:
+    TabDelivery: 'Bezorging'
+    DeliveryType: 'Bezorgwijze'
+    DeliveryDate: 'Bezorgdatum'
+    PickupLocation: 'Afhaalpunt'

@@ -6,6 +6,7 @@ namespace SilverShop\ShippingMyParcel;
 
 use MyParcelNL\Sdk\src\Factory\ConsignmentFactory;
 use MyParcelNL\Sdk\src\Helper\MyParcelCollection;
+use MyParcelNL\Sdk\src\Model\Consignment\AbstractConsignment;
 use RuntimeException;
 use SilverShop\Model\Order;
 use SilverShop\ShippingLabels\Model\ShippingLabel;
@@ -105,23 +106,8 @@ class MyParcelProvider implements ShippingLabelProvider
             throw new RuntimeException('Order has no shipping address to ship to.');
         }
 
-        $person = trim(((string) $address->FirstName) . ' ' . ((string) $address->Surname));
-        if ($person === '') {
-            $person = (string) $order->Name;
-        }
-
         try {
-            $consignment = ConsignmentFactory::createByCarrierId((int) $service['carrier_id'])
-                ->setApiKey($key)
-                ->setReferenceId((string) $order->Reference)
-                ->setCountry((string) $address->Country)
-                ->setPerson($person)
-                ->setFullStreet((string) $address->Address)
-                ->setPostalCode((string) $address->PostalCode)
-                ->setCity((string) $address->City)
-                ->setEmail((string) $order->getLatestEmail())
-                ->setPackageType((int) $service['package_type'])
-                ->setTotalWeight($this->weightGrams($order));
+            $consignment = $this->buildConsignment($order, $service, $key);
 
             $collection = $this->newCollection()
                 ->setUserAgent('SilverShop', '')
@@ -144,6 +130,100 @@ class MyParcelProvider implements ShippingLabelProvider
             service: $code,
             providerRef: $consignmentId,
         );
+    }
+
+    /**
+     * Build the MyParcel consignment for an order — pure (no network), so it is the authoritative, unit-testable
+     * expression of the API payload (assert via {@see \MyParcelNL\Sdk\src\Services\ConsignmentEncode::apiEncode()}).
+     *
+     * Base = plain home delivery to the shipping address; {@see applyDeliveryOptions()} then layers on the stored
+     * checkout choice (a carrier pickup point, or a standard delivery date) when present.
+     *
+     * @param array{title: string, carrier_id: int, package_type: int} $service
+     */
+    public function buildConsignment(Order $order, array $service, string $key): AbstractConsignment
+    {
+        $address = $order->ShippingAddress();
+        if (!$address || !$address->exists()) {
+            throw new RuntimeException('Order has no shipping address to ship to.');
+        }
+
+        $person = trim(((string) $address->FirstName) . ' ' . ((string) $address->Surname));
+        if ($person === '') {
+            $person = (string) $order->Name;
+        }
+
+        $consignment = ConsignmentFactory::createByCarrierId((int) $service['carrier_id'])
+            ->setApiKey($key)
+            ->setReferenceId((string) $order->Reference)
+            ->setCountry((string) $address->Country)
+            ->setPerson($person)
+            ->setFullStreet((string) $address->Address)
+            ->setPostalCode((string) $address->PostalCode)
+            ->setCity((string) $address->City)
+            ->setEmail((string) $order->getLatestEmail())
+            ->setPackageType((int) $service['package_type'])
+            ->setTotalWeight($this->weightGrams($order));
+
+        $this->applyDeliveryOptions($consignment, $order);
+
+        return $consignment;
+    }
+
+    /**
+     * Apply the order's stored checkout delivery-options choice to the consignment.
+     *
+     * - Carrier pickup point → delivery_type 4 (pickup) + signature + only_recipient=false + the pickup object
+     *   (canonical location_code + retail_network_id + the point's address). Pickup requires package_type 1 (package),
+     *   so a mailbox service is promoted to package for pickup.
+     * - Otherwise, a chosen standard delivery date (when the widget offered one) → delivery_type 2 + delivery_date.
+     * - Nothing stored, or a non-NL/BE destination → left as plain home delivery (graceful degrade).
+     *
+     * The discrete pickup address comes from the raw widget payload (the stored source of truth); the canonical codes
+     * come from the extracted columns.
+     */
+    protected function applyDeliveryOptions(AbstractConsignment $consignment, Order $order): void
+    {
+        if (!$order->hasMethod('IsMyParcelPickup')) {
+            return;
+        }
+
+        if ($order->IsMyParcelPickup() && $order->shipsToMyParcelCountry()) {
+            $pickup = $order->getMyParcelPickupData() ?? [];
+            $location = $order->PickupLocation();
+
+            $country = strtoupper((string) ($pickup['cc'] ?? ($location ? $location->Country : '')));
+            $postal = (string) ($pickup['postalCode'] ?? ($location ? $location->PostalCode : ''));
+            $city = (string) ($pickup['city'] ?? ($location ? $location->City : ''));
+            $street = (string) ($pickup['street'] ?? ($location ? $location->Address : ''));
+            $number = trim((string) ($pickup['number'] ?? '') . (string) ($pickup['numberSuffix'] ?? ''));
+            $name = (string) ($pickup['locationName'] ?? ($location ? $location->Company : ''));
+
+            $consignment
+                ->setPackageType(AbstractConsignment::PACKAGE_TYPE_PACKAGE)
+                // Pickup (type 4) needs no delivery_date (only morning/evening do), so skip the SDK's date guard.
+                ->setDeliveryType(AbstractConsignment::DELIVERY_TYPE_PICKUP, false)
+                ->setSignature(true)
+                ->setOnlyRecipient(false)
+                ->setPickupLocationCode((string) $order->PickupLocationCode ?: (string) ($pickup['locationCode'] ?? ''))
+                ->setPickupNetworkId((string) $order->PickupNetworkId ?: (string) ($pickup['retailNetworkId'] ?? ''))
+                ->setPickupCountry($country)
+                ->setPickupPostalCode($postal)
+                ->setPickupCity($city)
+                ->setPickupStreet($street)
+                ->setPickupNumber($number)
+                ->setPickupLocationName($name);
+
+            return;
+        }
+
+        $date = (string) $order->DeliveryDate;
+        if ($date !== '' && $date >= date('Y-m-d')) {
+            // Set the date before the type (the SDK requires it in that order for a dated delivery).
+            $consignment
+                ->setDeliveryDate($date . ' 00:00:00')
+                ->setDeliveryType(AbstractConsignment::DELIVERY_TYPE_STANDARD);
+        }
     }
 
     public function cancelLabel(ShippingLabel $label): bool
