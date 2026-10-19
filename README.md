@@ -128,3 +128,7 @@ concept and produce the PDF only when printing) — a planned v2 change.
 Planned (later): per-option surcharges (pickup fee / signature / delivery windows) as a shipping modifier, carrier
 delivery dates/time windows on the consignment, multi-carrier (DPD/bpost/DHL), opt-in auto-create on payment, bulk label
 creation, concept-first create (API-cancellable labels).
+
+## Credits
+
+Built and maintained by **Remy Vaartjes** (<remy@xd.nl>) — part of the **SilverShop-Suite**.
