@@ -1,6 +1,6 @@
 {
-    "name": "silvershop/shipping-myparcel",
-    "description": "MyParcel shipping-label provider for silvershop/shipping-labels — creates carrier labels (PostNL; carrier-extensible) with tracking, from an order.",
+    "name": "silvershop-suite/shipping-myparcel",
+    "description": "MyParcel shipping-label provider for silvershop-suite/shipping-labels — creates carrier labels (PostNL; carrier-extensible) with tracking, from an order.",
     "type": "silverstripe-vendormodule",
     "keywords": ["silverstripe", "silvershop", "ecommerce", "shipping", "label", "myparcel", "postnl", "carrier"],
     "license": "BSD-3-Clause",
@@ -25,7 +25,7 @@
         "silverstripe/framework": "^6.0",
         "silverstripe/siteconfig": "^6.0",
         "silvershop/core": "^6",
-        "silvershop/shipping-labels": "@dev",
+        "silvershop-suite/shipping-labels": "@dev",
         "myparcelnl/sdk": "^3.0"
     },
     "require-dev": {
@@ -36,8 +36,8 @@
     },
     "suggest": {
         "silvershop/shipping": "Derives the parcel weight automatically from the order's products (createShippingPackage); otherwise a configurable fallback weight is used.",
-        "silvershop/address-formats": "Supplies the discrete house number the delivery-options widget's pickup lookup needs (NL/BE); without it the number is parsed from the street.",
-        "silvershop/store-profile": "Central shop identity + sender address, shared with the shipping-labels packing slip."
+        "silvershop-suite/address-formats": "Supplies the discrete house number the delivery-options widget's pickup lookup needs (NL/BE); without it the number is parsed from the street.",
+        "silvershop-suite/store-profile": "Central shop identity + sender address, shared with the shipping-labels packing slip."
     },
     "extra": {
         "branch-alias": {

@@ -1,6 +1,6 @@
-# silvershop/shipping-myparcel
+# silvershop-suite/shipping-myparcel
 
-A **MyParcel** label provider for [`silvershop/shipping-labels`](https://github.com/silvershop/silvershop-shipping-labels).
+A **MyParcel** label provider for [`silvershop-suite/shipping-labels`](https://github.com/silvershop/silvershop-shipping-labels).
 It creates a real carrier label (PostNL) for an order through the [MyParcel SDK](https://github.com/myparcelNL/sdk),
 returning the label PDF + barcode/tracking; the shipping-labels framework stores and serves the PDF.
 
@@ -10,10 +10,10 @@ use a different adapter.
 ## Install
 
 ```bash
-composer require silvershop/shipping-myparcel
+composer require silvershop-suite/shipping-myparcel
 ```
 
-Pulls in `silvershop/shipping-labels` and `myparcelnl/sdk`. Install `silvershop/shipping` too if you want the parcel
+Pulls in `silvershop-suite/shipping-labels` and `myparcelnl/sdk`. Install `silvershop/shipping` too if you want the parcel
 weight derived automatically from your products.
 
 ## Configure
@@ -58,7 +58,7 @@ the package is sent to the chosen point (`delivery_type 4`).
 It uses MyParcel's official **[`@myparcel/delivery-options`](https://developer.myparcel.nl/documentation/60.delivery-options.html)
 v6** widget, loaded from a pinned jsDelivr CDN build and mounted into the **single-page checkout** via the module's own
 `Requirements` + the `updateOrderForm` controller hook — **no theme edits**, the same injection pattern as
-silvershop/conversion-tracking. The widget's address lookups (delivery options + nearby pickup points) are **keyless**;
+silvershop-suite/conversion-tracking. The widget's address lookups (delivery options + nearby pickup points) are **keyless**;
 only consignment creation uses your `SS_MYPARCEL_API_KEY`.
 
 **How it works**
@@ -66,7 +66,7 @@ only consignment creation uses your `SS_MYPARCEL_API_KEY`.
 1. When MyParcel is configured and the cart is not pickup-only, the widget mount + a hidden field are added to the
    checkout form (via a `CheckoutComponent`), and the widget JS + a small glue script are injected.
 2. The glue script builds the widget config from the live shipping-address fields and only activates it for an
-   **NL/BE** address with a postcode + house number. (Install `silvershop/address-formats` for a discrete house-number
+   **NL/BE** address with a postcode + house number. (Install `silvershop-suite/address-formats` for a discrete house-number
    field; otherwise it is parsed from the street.)
 3. The customer's selection (`myparcel_updated_delivery_options`) is written into the hidden field and, on submit,
    stored on the order.
@@ -90,7 +90,7 @@ Nothing chosen, an incomplete address, or a non-NL/BE destination → the order 
 Core's `SinglePageCheckoutComponentConfig` hard-codes its component list with no add-component hook. Rather than swap the
 class (an Injector `class:` override doesn't compose — only one module can win), the module appends its component with an
 Injector `calls:` entry (`addComponent`). Injector merges service definitions, so this coexists with another module that
-overrides the same config (e.g. `silvershop/vat-compliance`). `CheckoutComponentConfig::create()` resolves through the
+overrides the same config (e.g. `silvershop-suite/vat-compliance`). `CheckoutComponentConfig::create()` resolves through the
 Injector, so no silvershop/core edit is needed. A small upstream `updateComponents` extend hook in the core config would
 be cleaner still; it is flagged as a recommended future PR rather than bundled here.
 
