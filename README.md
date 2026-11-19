@@ -1,6 +1,6 @@
 # silvershop-suite/shipping-myparcel
 
-A **MyParcel** label provider for [`silvershop-suite/shipping-labels`](https://github.com/silvershop/silvershop-shipping-labels).
+A **MyParcel** label provider for [`silvershop-suite/shipping-labels`](https://github.com/silvershop-suite/silvershop-shipping-labels).
 It creates a real carrier label (PostNL) for an order through the [MyParcel SDK](https://github.com/myparcelNL/sdk),
 returning the label PDF + barcode/tracking; the shipping-labels framework stores and serves the PDF.
 

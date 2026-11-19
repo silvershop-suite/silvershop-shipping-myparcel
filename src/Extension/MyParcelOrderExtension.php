@@ -300,7 +300,8 @@ class MyParcelOrderExtension extends Extension
         $location->City = (string) ($pickup['city'] ?? '');
         $location->PostalCode = (string) ($pickup['postalCode'] ?? '');
         $location->Country = strtoupper((string) ($pickup['cc'] ?? ''));
-        // Set a discrete house number when the field exists (silvershop/address-formats adds HouseNumber on Address).
+        // Set a discrete house number when the field exists (silvershop-suite/address-formats adds HouseNumber on
+        // Address).
         if ($number !== '' && $location->hasField('HouseNumber')) {
             $location->HouseNumber = $number;
         }

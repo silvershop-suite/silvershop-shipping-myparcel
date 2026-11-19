@@ -17,7 +17,7 @@
     "repositories": [
         {
             "type": "vcs",
-            "url": "https://github.com/RVXD/silvershop-shipping-labels.git"
+            "url": "https://github.com/silvershop-suite/silvershop-shipping-labels.git"
         }
     ],
     "require": {

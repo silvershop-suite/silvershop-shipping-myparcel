@@ -18,7 +18,7 @@ use SilverStripe\Core\Environment;
 use Throwable;
 
 /**
- * MyParcel shipping-label provider for silvershop/shipping-labels.
+ * MyParcel shipping-label provider for silvershop-suite/shipping-labels.
  *
  * v1: creates a carrier label (PostNL) for an order via the MyParcel SDK, returning the label PDF + barcode/tracking;
  * the shipping-labels framework stores and serves the PDF. Carriers/services are config-driven (add DHL/DPD in
