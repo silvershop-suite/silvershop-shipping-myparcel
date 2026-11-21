@@ -159,18 +159,39 @@ class MyParcelCheckoutExtension extends Extension
             return ['cc' => '', 'postalCode' => '', 'number' => '', 'street' => '', 'city' => ''];
         }
 
+        $street = (string) $address->Address;
         $number = $address->hasField('HouseNumber') ? (string) $address->HouseNumber : '';
         if ($number === '') {
-            $number = $this->parseHouseNumber((string) $address->Address);
+            $number = $this->parseHouseNumber($street);
         }
 
         return [
             'cc' => strtoupper((string) $address->Country),
             'postalCode' => (string) $address->PostalCode,
             'number' => $number,
-            'street' => (string) $address->Address,
+            'street' => $this->fullStreet($street, $number),
             'city' => (string) $address->City,
         ];
+    }
+
+    /**
+     * Re-join a split street-name + house-number into one "Street 49" string for the widget.
+     *
+     * The MyParcel delivery-options widget does NOT send the house number as a separate request param — it hands the
+     * `street` value to MyParcel, which parses the number out of it. So when the address-formats module splits the NL
+     * address into discrete `Address` (street name) + `HouseNumber` fields, a name-only street ("Dijksterweg") reaches
+     * MyParcel with no number and the delivery_options call 422s with "Street cannot be parsed". Appending the number
+     * restores the combined "Dijksterweg 49" form that parses cleanly. No-op when the street already contains a digit
+     * (combined entry, so the number is in place) or when there is no number to append.
+     */
+    protected function fullStreet(string $street, string $number): string
+    {
+        $street = trim($street);
+        if ($number !== '' && !preg_match('/\d/', $street)) {
+            return trim($street . ' ' . $number);
+        }
+
+        return $street;
     }
 
     /**
@@ -211,12 +232,14 @@ class MyParcelCheckoutExtension extends Extension
         $config = json_encode($this->buildWidgetConfig($order), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $allowed = json_encode($this->allowedCountries($order));
         $inputClass = MyParcelDeliveryOptions::INPUT_CLASS;
+        $mountId = MyParcelDeliveryOptions::MOUNT_ID;
 
         return <<<JS
 (function () {
     var BASE = {$config};
     var ALLOWED = {$allowed};
     var INPUT = '.{$inputClass}';
+    var MOUNT = '{$mountId}';
 
     function field(suffix) {
         var els = document.querySelectorAll('[name\$="_' + suffix + '"]');
@@ -236,7 +259,15 @@ class MyParcelCheckoutExtension extends Extension
     function address() {
         var cc = (field('Country') || BASE.address.cc || '').toUpperCase();
         var street = field('Address') || BASE.address.street || '';
-        var number = field('HouseNumber') || BASE.address.number || parseNumber(street);
+        var houseNo = field('HouseNumber') || BASE.address.number || '';
+        var number = houseNo || parseNumber(street);
+        // The widget passes `street` to MyParcel and lets it parse the house number out — it sends no
+        // separate number param. When address-formats splits NL into Address + HouseNumber, `street` is
+        // name-only ("Dijksterweg") and MyParcel 422s ("Street cannot be parsed"), so re-join them into
+        // "Dijksterweg 49". No-op when the number is already in the street (combined entry) or absent.
+        if (houseNo && !/\\d/.test(street)) {
+            street = (street + ' ' + houseNo).replace(/\\s+/g, ' ').trim();
+        }
         return {
             cc: cc,
             postalCode: field('PostalCode') || BASE.address.postalCode || '',
@@ -254,11 +285,80 @@ class MyParcelCheckoutExtension extends Extension
         document.dispatchEvent(new CustomEvent('myparcel_update_delivery_options', { detail: detail }));
     }
 
+    // --- Pickup-point city line (silvershop-suite enhancement) ---------------------------------------
+    // The MyParcel widget's pickup detail card renders only the location name + "Street 42" — the city and
+    // postcode are in the selected-pickup payload but never drawn. Surface "1234 AB City" under the street
+    // via a data-attr + ::after (adds no child node, so the widget's own Vue DOM diffing is untouched),
+    // re-applied on every widget re-render (selection change) through a MutationObserver.
+    var lastPickup = null;
+
+    function titleCase(s) {
+        return String(s || '').toLowerCase().replace(/(^|[\\s'-])([a-z\\u00e0-\\u00ff])/g, function (m, pre, ch) {
+            return pre + ch.toUpperCase();
+        });
+    }
+    function fmtPostcode(pc) {
+        var s = String(pc || '').toUpperCase().replace(/\\s+/g, '');
+        var m = s.match(/^(\\d{4})([A-Z]{2})\$/);
+        return m ? (m[1] + ' ' + m[2]) : s;
+    }
+    function pickupCityLine(p) {
+        if (!p) { return ''; }
+        var out = [];
+        if (p.postalCode) { out.push(fmtPostcode(p.postalCode)); }
+        if (p.city) { out.push(titleCase(p.city)); }
+        return out.join(' ').trim();
+    }
+    function ensureCityCss() {
+        if (document.getElementById('mp-city-css')) { return; }
+        var st = document.createElement('style');
+        st.id = 'mp-city-css';
+        st.textContent = '#' + MOUNT + ' p[data-mp-city]::after{content:attr(data-mp-city);display:block;}';
+        (document.head || document.documentElement).appendChild(st);
+    }
+    function annotatePickup() {
+        if (!lastPickup || !lastPickup.locationName) { return; }
+        var line = pickupCityLine(lastPickup);
+        if (!line) { return; }
+        var mount = document.getElementById(MOUNT);
+        if (!mount) { return; }
+        ensureCityCss();
+        // The detail card is <div><p>{name}</p><p class="mp-opacity-60">{street} {nr}</p>…</div>; match the
+        // name <p> (skip map-marker tooltips) and tag its sibling street line with the city.
+        var ps = mount.querySelectorAll('p');
+        for (var i = 0; i < ps.length; i++) {
+            if (ps[i].closest('.leaflet-container')) { continue; }
+            if (String(ps[i].textContent || '').trim() === lastPickup.locationName) {
+                var street = ps[i].nextElementSibling;
+                if (street && street.tagName === 'P' && street.getAttribute('data-mp-city') !== line) {
+                    street.setAttribute('data-mp-city', line);
+                }
+                return;
+            }
+        }
+    }
+
+    var cityObserver = null;
+    function startCityObserver() {
+        if (cityObserver) { return; }
+        var mount = document.getElementById(MOUNT);
+        if (!mount) { return; }
+        var t = null;
+        // childList/subtree only (not attributes) so our own setAttribute can't re-trigger the observer.
+        cityObserver = new MutationObserver(function () {
+            if (t) { return; }
+            t = setTimeout(function () { t = null; annotatePickup(); }, 60);
+        });
+        cityObserver.observe(mount, { childList: true, subtree: true });
+    }
+
     document.addEventListener('myparcel_updated_delivery_options', function (e) {
         var input = document.querySelector(INPUT);
         if (input) {
             try { input.value = JSON.stringify(e.detail); } catch (err) { input.value = ''; }
         }
+        lastPickup = (e.detail && e.detail.isPickup && e.detail.pickupLocation) ? e.detail.pickupLocation : null;
+        annotatePickup();
     });
 
     ['Country', 'PostalCode', 'HouseNumber', 'Address', 'City'].forEach(function (suffix) {
@@ -268,7 +368,7 @@ class MyParcelCheckoutExtension extends Extension
         }, true);
     });
 
-    function boot() { configure(); setTimeout(configure, 800); }
+    function boot() { configure(); setTimeout(configure, 800); startCityObserver(); }
     if (document.readyState !== 'loading') { boot(); } else { document.addEventListener('DOMContentLoaded', boot); }
 })();
 JS;
