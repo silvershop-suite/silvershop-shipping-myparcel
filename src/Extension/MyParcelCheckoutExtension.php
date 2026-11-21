@@ -9,11 +9,12 @@ use SilverShop\ShippingMyParcel\Checkout\MyParcelDeliveryOptions;
 use SilverStripe\Core\Config\Configurable;
 use SilverStripe\Core\Extension;
 use SilverStripe\Forms\Form;
+use SilverStripe\i18n\i18n;
 use SilverStripe\View\Requirements;
 
 /**
  * Injects the MyParcel delivery-options widget into the single-page checkout, with no theme edits — the same
- * Requirements/`updateOrderForm` pattern silvershop/conversion-tracking and the storefront use.
+ * Requirements/`updateOrderForm` pattern silvershop-suite/conversion-tracking and the storefront use.
  *
  * Applied to {@link \SilverShop\Page\CheckoutPageController}; fires on its OrderForm()'s `updateOrderForm` hook. It
  * loads the official `@myparcel/delivery-options` v6 widget (pinned CDN) and a small inline glue script that: builds
@@ -51,9 +52,10 @@ class MyParcelCheckoutExtension extends Extension
     private static string $carrier = 'postnl';
 
     /**
-     * Widget locale (BCP-47).
+     * Widget locale (BCP-47), used for its dates and opening hours. Empty = follow the site locale (en_US -> en-US),
+     * so dates match the translated labels. Set e.g. 'nl-NL' to pin it.
      */
-    private static string $locale = 'nl-NL';
+    private static string $locale = '';
 
     /**
      * Default pickup view: "map" or "list".
@@ -61,21 +63,34 @@ class MyParcelCheckoutExtension extends Extension
     private static string $pickup_default_view = 'map';
 
     /**
-     * Widget UI label overrides (its `strings` map). The widget localises dates/opening-hours from `locale`, but its
-     * section labels fall back to their string keys unless supplied here. Dutch defaults for the NL-first audience;
-     * override per language in config. Set to an empty array to show the widget's own keys.
+     * Widget text overrides, merged over the translated defaults from {@see widgetStrings()} (key => text). The
+     * widget shows its raw string key ("pickupTitle", "error3501") for any text it is not given, so every label and
+     * every MyParcel error it can show has a translated default in lang/; only list keys here to change one.
      *
      * @var array<string, string>
      */
-    private static array $widget_strings = [
-        'deliveryTitle' => 'Bezorgen',
-        'pickupTitle' => 'Afhalen',
-        'deliveryStandardTitle' => 'Standaard',
-        'deliveryMorningTitle' => 'Ochtend',
-        'deliveryEveningTitle' => 'Avond',
-        'signatureTitle' => 'Handtekening voor ontvangst',
-        'onlyRecipientTitle' => 'Alleen bij de ontvanger bezorgen',
-        'openingHours' => 'Openingstijden',
+    private static array $widget_strings = [];
+
+    /**
+     * Widget string keys that get a translated default (the widget's own key => English fallback). The error keys
+     * are the MyParcel API codes the widget turns into a message: 3212 missing parameter, 3224 invalid parameter,
+     * 3501 address unknown (also shown for 3731, street cannot be split), 3505 invalid postcode, 3728 unsupported
+     * carrier. Codes 3506 and 3516 are never shown by the widget.
+     */
+    private const WIDGET_STRINGS = [
+        'deliveryTitle' => 'Delivery',
+        'pickupTitle' => 'Pick up',
+        'deliveryStandardTitle' => 'Standard',
+        'deliveryMorningTitle' => 'Morning',
+        'deliveryEveningTitle' => 'Evening',
+        'signatureTitle' => 'Signature on receipt',
+        'onlyRecipientTitle' => 'Deliver to the recipient only',
+        'openingHours' => 'Opening hours',
+        'error3212' => 'Please fill in the complete address.',
+        'error3224' => 'The address could not be checked. Please check your postcode and house number.',
+        'error3501' => 'We could not find this address. Please check your postcode and house number.',
+        'error3505' => 'This postcode is not valid for the selected country.',
+        'error3728' => 'Delivery options are not available for this address.',
     ];
 
     public function updateOrderForm(Form $form): void
@@ -116,7 +131,7 @@ class MyParcelCheckoutExtension extends Extension
             'address' => $this->seedAddress($order),
             'config' => [
                 'platform' => (string) self::config()->get('platform'),
-                'locale' => (string) self::config()->get('locale'),
+                'locale' => $this->widgetLocale(),
                 'carrierSettings' => [
                     (string) self::config()->get('carrier') => [
                         'allowDeliveryOptions' => true,
@@ -128,12 +143,41 @@ class MyParcelCheckoutExtension extends Extension
             ],
         ];
 
-        $strings = (array) self::config()->get('widget_strings');
-        if ($strings !== []) {
-            $config['strings'] = $strings;
-        }
+        $config['strings'] = $this->widgetStrings();
 
         return $config;
+    }
+
+    /**
+     * The widget's texts in the current site language: translated defaults for its labels and error messages,
+     * with any `widget_strings` config entries on top. Always sent complete, because the widget replaces its whole
+     * string table on every update.
+     *
+     * @return array<string, string>
+     */
+    public function widgetStrings(): array
+    {
+        $strings = [];
+        foreach (self::WIDGET_STRINGS as $key => $default) {
+            $strings[$key] = _t(self::class . '.Widget_' . $key, $default);
+        }
+        foreach ((array) self::config()->get('widget_strings') as $key => $text) {
+            if (is_string($key) && is_string($text) && $text !== '') {
+                $strings[$key] = $text;
+            }
+        }
+
+        return $strings;
+    }
+
+    /**
+     * The configured widget locale, or the site locale as BCP-47 when none is pinned.
+     */
+    protected function widgetLocale(): string
+    {
+        $locale = (string) self::config()->get('locale');
+
+        return $locale !== '' ? $locale : str_replace('_', '-', i18n::get_locale());
     }
 
     /**

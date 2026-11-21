@@ -105,6 +105,18 @@ SilverShop\ShippingMyParcel\Extension\MyParcelCheckoutExtension:
   pickup_default_view: 'list'
 ```
 
+**Texts and language.** The widget's labels and the address errors it can show (MyParcel codes 3212, 3224, 3501,
+3505, 3728: for example "We could not find this address") are translated in `lang/` (en, nl, de, fr, it, es) and
+follow the site locale. Without a text the widget would print its raw key (`error3501`). `locale` is empty by
+default, so the widget's dates follow the site locale too; set it (e.g. `'nl-NL'`) to pin it. To change one text,
+set just that key in `widget_strings`:
+
+```yaml
+SilverShop\ShippingMyParcel\Extension\MyParcelCheckoutExtension:
+  widget_strings:
+    pickupTitle: 'Ophalen bij een PostNL-punt'
+```
+
 ## Cancelling labels
 
 `cancelLabel()` asks MyParcel to delete the shipment and then **verifies it is actually gone** before reporting success,

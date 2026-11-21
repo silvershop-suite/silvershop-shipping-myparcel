@@ -13,6 +13,7 @@ use SilverStripe\Core\Config\Config;
 use SilverStripe\Core\Environment;
 use SilverStripe\Dev\SapphireTest;
 use SilverStripe\Forms\HiddenField;
+use SilverStripe\i18n\i18n;
 
 /**
  * The widget configuration emitted into checkout + the render-time gating of the delivery-options component.
@@ -29,6 +30,7 @@ class MyParcelCheckoutWidgetTest extends SapphireTest
         Config::modify()->set(Order::class, 'log_status', []);
         $this->envKey = (string) Config::inst()->get(MyParcelProvider::class, 'api_key_env');
         Environment::setEnv($this->envKey, '');
+        i18n::set_locale('nl_NL');
     }
 
     protected function tearDown(): void
@@ -64,8 +66,9 @@ class MyParcelCheckoutWidgetTest extends SapphireTest
         $this->assertTrue($config['config']['carrierSettings']['postnl']['allowPickupLocations']);
         $this->assertSame('map', $config['config']['carrierSettings']['postnl']['pickupLocationsDefaultView']);
 
-        // Dutch UI label overrides (the widget's `strings` map) are emitted.
+        // The widget's texts (its `strings` map) follow the site language, and so does its date locale.
         $this->assertSame('Afhalen', $config['strings']['pickupTitle']);
+        $this->assertSame('nl-NL', $config['config']['locale']);
 
         // Address seeded from the order, with a house number parsed from the street.
         $this->assertSame('NL', $config['address']['cc']);
@@ -101,5 +104,39 @@ class MyParcelCheckoutWidgetTest extends SapphireTest
         $hidden = $fields->dataFieldByName(MyParcelDeliveryOptions::FIELD_NAME);
         $this->assertInstanceOf(HiddenField::class, $hidden);
         $this->assertStringContainsString(MyParcelDeliveryOptions::INPUT_CLASS, (string) $hidden->extraClass());
+    }
+
+    public function testEveryErrorTheWidgetCanShowHasText(): void
+    {
+        // Without a text the widget prints its raw key, e.g. "error3501" under the terms checkbox.
+        $strings = (new MyParcelCheckoutExtension())->widgetStrings();
+
+        foreach (['error3212', 'error3224', 'error3501', 'error3505', 'error3728'] as $key) {
+            $this->assertNotSame('', $strings[$key] ?? '', $key . ' has a text');
+            $this->assertNotSame($key, $strings[$key]);
+        }
+        $this->assertSame('Dit adres is niet gevonden. Controleer je postcode en huisnummer.', $strings['error3501']);
+    }
+
+    public function testWidgetTextsAreTranslatedAndConfigOverridesOneKey(): void
+    {
+        i18n::set_locale('en_GB');
+        Config::modify()->set(MyParcelCheckoutExtension::class, 'widget_strings', ['pickupTitle' => 'Collect']);
+
+        $config = (new MyParcelCheckoutExtension())->buildWidgetConfig($this->orderFor('NL'));
+
+        $this->assertSame('Collect', $config['strings']['pickupTitle'], 'config wins for the key it sets');
+        $this->assertSame('Delivery', $config['strings']['deliveryTitle'], 'the rest stays translated');
+        $this->assertStringStartsWith('We could not find this address', $config['strings']['error3501']);
+        $this->assertSame('en-GB', $config['config']['locale']);
+    }
+
+    public function testPinnedLocaleWins(): void
+    {
+        Config::modify()->set(MyParcelCheckoutExtension::class, 'locale', 'nl-BE');
+
+        $config = (new MyParcelCheckoutExtension())->buildWidgetConfig($this->orderFor('NL'));
+
+        $this->assertSame('nl-BE', $config['config']['locale']);
     }
 }
